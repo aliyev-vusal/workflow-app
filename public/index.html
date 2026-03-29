@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Builder</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'DM Sans',sans-serif;background:#0a0a0a;color:#e5e5e5;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+        @media(max-width:1024px){body::before{content:'This application is optimised for desktop';position:fixed;inset:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;z-index:9999;font-size:16px;color:#888}}
+
+        /* Top bar */
+        .topbar{height:52px;background:#111;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:20}
+        .topbar-logo{font-weight:700;font-size:14px;color:#ff6d5a;white-space:nowrap}
+        .topbar-sep{width:1px;height:24px;background:#2a2a2a;margin:0 4px}
+        .wf-name{background:#1e1e1e;border:1px solid #333;border-radius:6px;color:#e5e5e5;font-family:'DM Sans',sans-serif;font-size:13px;padding:5px 10px;width:180px;outline:none}
+        .wf-name:focus{border-color:#ff6d5a}
+        .wf-select{background:#1e1e1e;border:1px solid #333;border-radius:6px;color:#e5e5e5;font-family:'DM Sans',sans-serif;font-size:13px;padding:5px 10px;cursor:pointer;outline:none;min-width:150px}
+        .wf-select:focus{border-color:#ff6d5a}
+        .spacer{flex:1}
+        .zoom-lbl{font-size:12px;color:#888}
+        button{padding:6px 13px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+        .btn-primary{background:#ff6d5a;color:#fff}
+        .btn-primary:hover{background:#ff8a75}
+        .btn-outline{background:transparent;border:1px solid #333;color:#e5e5e5}
+        .btn-outline:hover{border-color:#ff6d5a;color:#ff6d5a}
+        .btn-danger{background:transparent;border:1px solid #555;color:#ff6d5a}
+        .btn-danger:hover{background:#ff6d5a;color:#fff;border-color:#ff6d5a}
+        button:active{transform:scale(.97)}
+        button:disabled{opacity:.45;cursor:not-allowed;transform:none!important}
+
+        /* Webhook badge */
+        .webhook-badge{display:none;align-items:center;gap:6px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:4px 10px;font-size:11px;color:#888;max-width:300px}
+        .webhook-badge.visible{display:flex}
+        .webhook-badge span{color:#ff6d5a;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+        .webhook-badge button{padding:2px 6px;font-size:11px;font-weight:500}
+
+        /* Layout */
+        .main{display:flex;flex:1;overflow:hidden}
+        .sidebar{width:220px;min-width:220px;background:#111;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow-y:auto}
+        .sidebar-header{padding:12px 14px;border-bottom:1px solid #2a2a2a;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#ff6d5a}
+        .node-category{padding:6px 0;border-bottom:1px solid #1a1a1a}
+        .category-title{padding:6px 14px;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+        .node-item{padding:0 8px;margin:2px 8px;background:#1e1e1e;border:1px solid #333;border-radius:6px;cursor:grab;display:flex;align-items:center;gap:8px;font-size:12px;transition:all .15s;user-select:none;height:40px}
+        .node-item:hover{background:#252525;border-color:#ff6d5a;color:#ff6d5a}
+        .node-item:hover svg{stroke:#ff6d5a}
+        .node-item svg{width:14px;height:14px;min-width:14px;stroke:#888;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+        /* Canvas */
+        .canvas-wrap{flex:1;display:flex;flex-direction:column;position:relative}
+        .canvas{flex:1;position:relative;overflow:hidden;background:#0a0a0a}
+        .canvas-inner{position:absolute;top:0;left:0;width:100%;height:100%;transform-origin:0 0}
+        .canvas-bg{position:absolute;top:-3000px;left:-3000px;width:8000px;height:8000px;background-image:radial-gradient(circle,#2a2a2a 1px,transparent 1px);background-size:20px 20px}
+        .canvas-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+        .conn-path{fill:none;stroke:#ff6d5a;stroke-width:2;stroke-linecap:round;transition:stroke-opacity .2s}
+        .conn-path.dimmed{stroke-opacity:.15}
+        .conn-path.animated{stroke-dasharray:200;animation:connFlow 1s linear infinite}
+        @keyframes connFlow{to{stroke-dashoffset:-200}}
+        .conn-hit{fill:none;stroke:transparent;stroke-width:14;cursor:pointer;pointer-events:stroke}
+        .conn-path.dragging{stroke:#ff8a75;stroke-dasharray:6 3;animation:dashAnim .4s linear infinite}
+        @keyframes dashAnim{to{stroke-dashoffset:-9}}
+
+        /* Nodes */
+        .node{position:absolute;width:175px;height:76px;background:#1e1e1e;border:2px solid #333;border-radius:12px;padding:0 11px;display:flex;align-items:center;gap:9px;cursor:move;user-select:none;transition:border-color .15s,opacity .3s}
+        .node:hover{border-color:#555}
+        .node.selected{border-color:#ff6d5a!important}
+        .node.dimmed{opacity:.25}
+        .node.running{border-color:#ff6d5a!important;animation:pulse .7s ease-out}
+        .node.success{border-color:#4caf50!important}
+        .node.error-state{border-color:#f44336!important}
+        @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,109,90,.7)}70%{box-shadow:0 0 0 18px rgba(255,109,90,0)}100%{box-shadow:0 0 0 0 rgba(255,109,90,0)}}
+        .node-icon{width:30px;height:30px;min-width:30px;background:#2a2a2a;border-radius:7px;display:flex;align-items:center;justify-content:center}
+        .node-icon svg{width:14px;height:14px;stroke:#ff6d5a;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+        .node-content{flex:1;min-width:0}
+        .node-type{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.3px}
+        .node-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .node-actions{position:absolute;top:3px;right:3px;display:none;gap:2px}
+        .node:hover .node-actions{display:flex}
+        .node-btn{width:18px;height:18px;border:none;background:#333;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
+        .node-btn:hover{background:#ff6d5a}
+        .node-btn svg{width:10px;height:10px;stroke:#e5e5e5;fill:none;stroke-width:2;stroke-linecap:round}
+        .port{position:absolute;width:12px;height:12px;border-radius:50%;background:#333;border:2px solid #555;cursor:crosshair;transition:all .15s;z-index:5;top:50%;transform:translateY(-50%)}
+        .port-in{left:-7px}
+        .port-out{right:-7px}
+        .port:hover,.port.highlight{background:#ff6d5a;border-color:#ff6d5a;transform:translateY(-50%) scale(1.3)}
+
+        /* Canvas info */
+        .canvas-hint{position:absolute;bottom:10px;left:10px;font-size:10px;color:#555;pointer-events:none;z-index:5}
+
+        /* Settings panel */
+        .panel{position:fixed;top:0;right:-340px;width:320px;height:100vh;background:#161616;border-left:1px solid #2a2a2a;z-index:200;transition:right .25s;display:flex;flex-direction:column}
+        .panel.open{right:0}
+        .panel-hdr{padding:14px 16px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;justify-content:space-between}
+        .panel-title{font-weight:700;font-size:13px}
+        .panel-x{width:26px;height:26px;background:#2a2a2a;border:none;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
+        .panel-x:hover{background:#ff6d5a}
+        .panel-x svg{width:13px;height:13px;stroke:#e5e5e5;fill:none;stroke-width:2;stroke-linecap:round}
+        .panel-body{padding:14px;overflow-y:auto;flex:1}
+        .fg{margin-bottom:12px}
+        .fl{display:block;font-size:11px;color:#888;margin-bottom:5px;font-weight:500}
+        .fi,.fs,.ft{width:100%;background:#1e1e1e;border:1px solid #333;border-radius:6px;color:#e5e5e5;font-family:'DM Sans',sans-serif;font-size:12px;padding:7px 9px;outline:none;transition:border-color .15s}
+        .fi:focus,.fs:focus,.ft:focus{border-color:#ff6d5a}
+        .ft{resize:vertical;min-height:72px;font-family:monospace;font-size:11px}
+        .fh{font-size:10px;color:#666;margin-top:3px}
+        .panel-foot{padding:14px;border-top:1px solid #2a2a2a;display:flex;gap:8px}
+        .panel-foot button{flex:1}
+
+        /* Log panel */
+        .log-panel{position:fixed;bottom:-260px;left:220px;right:0;height:260px;background:#111;border-top:1px solid #2a2a2a;z-index:150;transition:bottom .25s;display:flex;flex-direction:column}
+        .log-panel.open{bottom:0}
+        .log-hdr{padding:8px 14px;border-bottom:1px solid #1a1a1a;display:flex;align-items:center;gap:10px;flex-shrink:0}
+        .log-title{font-size:12px;font-weight:700;color:#888}
+        .log-close{margin-left:auto;background:none;border:none;color:#666;cursor:pointer;font-size:18px;padding:0;line-height:1}
+        .log-body{flex:1;overflow-y:auto;padding:8px 14px;font-size:11px;font-family:monospace}
+        .log-row{padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;gap:8px;align-items:flex-start}
+        .log-row:last-child{border-bottom:none}
+        .log-status{font-weight:700;min-width:36px}
+        .log-status.ok{color:#4caf50}
+        .log-status.err{color:#f44336}
+        .log-name{color:#e5e5e5;min-width:140px}
+        .log-out{color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+        /* Toast */
+        .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1e1e1e;border:1px solid #ff6d5a;color:#e5e5e5;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;transition:transform .3s;pointer-events:none;white-space:nowrap}
+        .toast.show{transform:translateX(-50%) translateY(0)}
+        .toast.error{border-color:#f44336}
+    </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+    <div class="topbar-logo">⚡ Workflow</div>
+    <div class="topbar-sep"></div>
+    <input class="wf-name" id="wfName" placeholder="Workflow name..." value="New Workflow">
+    <select class="wf-select" id="wfList" onchange="app.loadWorkflow(this.value)">
+        <option value="">— Select saved workflow —</option>
+    </select>
+    <button class="btn-outline" onclick="app.newWorkflow()">+ New</button>
+    <button class="btn-outline" onclick="app.saveWorkflow()">💾 Save</button>
+    <button class="btn-danger" id="delBtn" onclick="app.deleteWorkflow()" style="display:none">Delete</button>
+    <div class="topbar-sep"></div>
+    <div class="webhook-badge" id="webhookBadge">
+        🔗 <span id="webhookUrl"></span>
+        <button class="btn-outline" onclick="app.copyWebhook()">Copy</button>
+    </div>
+    <div class="spacer"></div>
+    <span class="zoom-lbl" id="zoomLbl">%100</span>
+    <button class="btn-outline" onclick="app.undo()">↩</button>
+    <button class="btn-outline" onclick="app.clearCanvas()">Clear</button>
+    <button class="btn-primary" id="runBtn" onclick="app.run()">▶ Run</button>
+</div>
+
+<div class="main">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">Node Palette</div>
+        <div class="node-category">
+            <div class="category-title">Triggers</div>
+            <div class="node-item" draggable="true" data-type="webhook">
+                <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Webhook
+            </div>
+            <div class="node-item" draggable="true" data-type="schedule">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule
+            </div>
+        </div>
+        <div class="node-category">
+            <div class="category-title">Actions</div>
+            <div class="node-item" draggable="true" data-type="http">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>HTTP Request
+            </div>
+            <div class="node-item" draggable="true" data-type="email">
+                <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Send Email
+            </div>
+            <div class="node-item" draggable="true" data-type="sheets">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>Google Sheets
+            </div>
+            <div class="node-item" draggable="true" data-type="slack">
+                <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Slack Message
+            </div>
+            <div class="node-item" draggable="true" data-type="database">
+                <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Database
+            </div>
+            <div class="node-item" draggable="true" data-type="code">
+                <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Code
+            </div>
+        </div>
+        <div class="node-category">
+            <div class="category-title">Logic</div>
+            <div class="node-item" draggable="true" data-type="if">
+                <svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>IF Condition
+            </div>
+            <div class="node-item" draggable="true" data-type="filter">
+                <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>Filter
+            </div>
+            <div class="node-item" draggable="true" data-type="transform">
+                <svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>Transform
+            </div>
+            <div class="node-item" draggable="true" data-type="merge">
+                <svg viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>Merge
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="canvas-wrap">
+        <div class="canvas" id="canvas">
+            <div class="canvas-inner" id="ci">
+                <div class="canvas-bg"></div>
+                <svg class="canvas-svg" id="svg"></svg>
+                <div id="nc" style="position:absolute;inset:0;z-index:2"></div>
+            </div>
+            <div class="canvas-hint">Ctrl+Scroll: Zoom &nbsp;·&nbsp; Middle click: Pan &nbsp;·&nbsp; Ctrl+Z: Undo &nbsp;·&nbsp; Ctrl+D: Duplicate &nbsp;·&nbsp; Double-click: Settings &nbsp;·&nbsp; Click connection: Delete</div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings panel -->
+<div class="panel" id="panel">
+    <div class="panel-hdr">
+        <div class="panel-title" id="panelTitle">Settings</div>
+        <button class="panel-x" onclick="app.closePanel()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="panel-body" id="panelBody"></div>
+    <div class="panel-foot">
+        <button class="btn-outline" onclick="app.closePanel()">Cancel</button>
+        <button class="btn-primary" onclick="app.savePanel()">Save</button>
+    </div>
+</div>
+
+<!-- Log panel -->
+<div class="log-panel" id="logPanel">
+    <div class="log-hdr">
+        <div class="log-title">⚡ Execution Results</div>
+        <button class="log-close" onclick="app.closeLog()">×</button>
+    </div>
+    <div class="log-body" id="logBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const META = {
+    webhook:  {label:'Webhook',      cat:'Trigger'},
+    schedule: {label:'Schedule',     cat:'Trigger'},
+    http:     {label:'HTTP Request', cat:'Action'},
+    email:    {label:'Send Email',   cat:'Action'},
+    sheets:   {label:'Google Sheets',cat:'Action'},
+    slack:    {label:'Slack Message',cat:'Action'},
+    database: {label:'Database',     cat:'Action'},
+    code:     {label:'Code',         cat:'Action'},
+    if:       {label:'IF Condition', cat:'Logic'},
+    filter:   {label:'Filter',       cat:'Logic'},
+    transform:{label:'Transform',    cat:'Logic'},
+    merge:    {label:'Merge',        cat:'Logic'},
+};
+const ICONS = {
+    webhook:  '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    schedule: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    http:     '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    email:    '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    sheets:   '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>',
+    slack:    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+    code:     '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+    if:       '<line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+    filter:   '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+    transform:'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>',
+    merge:    '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+};
+const DEFS = {
+    webhook:  {url:'/webhook',method:'POST'},
+    schedule: {cron:'*/5 * * * *'},
+    http:     {url:'https://api.example.com',method:'GET',headers:''},
+    email:    {to:'',subject:'',body:''},
+    sheets:   {sheetId:'',sheet:'Sheet1',action:'read'},
+    slack:    {webhookUrl:'',channel:'#general',message:''},
+    database: {query:'SELECT * FROM table LIMIT 10'},
+    code:     {code:'// data variable holds output from the previous node\nreturn data;'},
+    if:       {condition:'data.value > 0'},
+    filter:   {field:'',operator:'eq',value:''},
+    transform:{source:'',target:'',operation:'copy'},
+    merge:    {mode:'merge'},
+};
+
+let _nid=1,_cid=1;
+
+const app = {
+    nodes:[],conns:[],zoom:1,px:0,py:0,
+    history:[],hIdx:-1,selId:null,
+    dragNode:null,dragConn:null,panning:false,panStart:null,editId:null,
+    currentWfId:null,webhookId:null,
+
+    init(){
+        this.$canvas=document.getElementById('canvas');
+        this.$ci=document.getElementById('ci');
+        this.$svg=document.getElementById('svg');
+        this.$nc=document.getElementById('nc');
+        this.$panel=document.getElementById('panel');
+        this._bindSidebar();
+        this._bindCanvas();
+        this._bindKeys();
+        this._loadWfList();
+    },
+
+    // ── sidebar drag ──
+    _bindSidebar(){
+        document.querySelectorAll('.node-item').forEach(el=>{
+            el.addEventListener('dragstart',e=>e.dataTransfer.setData('t',el.dataset.type));
+        });
+        this.$canvas.addEventListener('dragover',e=>e.preventDefault());
+        this.$canvas.addEventListener('drop',e=>{
+            e.preventDefault();
+            const t=e.dataTransfer.getData('t');if(!t)return;
+            const r=this.$canvas.getBoundingClientRect();
+            this.addNode(t,(e.clientX-r.left-this.px)/this.zoom-87,(e.clientY-r.top-this.py)/this.zoom-38);
+        });
+    },
+
+    // ── canvas ──
+    _bindCanvas(){
+        this.$canvas.addEventListener('mousedown',e=>{
+            if(e.button===1){this.panning=true;this.panStart={x:e.clientX-this.px,y:e.clientY-this.py};e.preventDefault();}
+        });
+        window.addEventListener('mousemove',e=>{
+            if(this.panning){this.px=e.clientX-this.panStart.x;this.py=e.clientY-this.panStart.y;this._t();}
+            if(this.dragNode){
+                const r=this.$canvas.getBoundingClientRect();
+                const mx=(e.clientX-r.left-this.px)/this.zoom,my=(e.clientY-r.top-this.py)/this.zoom;
+                const n=this.nodes.find(n=>n.id===this.dragNode.id);
+                if(n){n.x=mx-this.dragNode.ox;n.y=my-this.dragNode.oy;
+                    const el=document.getElementById('n'+n.id);
+                    if(el){el.style.left=n.x+'px';el.style.top=n.y+'px';}
+                    this._renderConns();}
+            }
+            if(this.dragConn){
+                const r=this.$canvas.getBoundingClientRect();
+                this.dragConn.mx=(e.clientX-r.left-this.px)/this.zoom;
+                this.dragConn.my=(e.clientY-r.top-this.py)/this.zoom;
+                this._renderConns();
+                document.querySelectorAll('.port-in').forEach(p=>p.classList.remove('highlight'));
+                this.nodes.forEach(n=>{
+                    if(n.id===this.dragConn.fid)return;
+                    if(Math.hypot(this.dragConn.mx-(n.x-7),this.dragConn.my-(n.y+31))<28)
+                        document.querySelector('#n'+n.id+' .port-in')?.classList.add('highlight');
+                });
+            }
+        });
+        window.addEventListener('mouseup',e=>{
+            if(this.panning){this.panning=false;}
+            if(this.dragNode){this._save();this.dragNode=null;}
+            if(this.dragConn){
+                const r=this.$canvas.getBoundingClientRect();
+                const mx=(e.clientX-r.left-this.px)/this.zoom,my=(e.clientY-r.top-this.py)/this.zoom;
+                const fid=this.dragConn.fid;
+                this.nodes.forEach(n=>{
+                    if(n.id===fid)return;
+                    if(Math.hypot(mx-(n.x-7),my-(n.y+31))<28&&!this.conns.find(c=>c.f===fid&&c.t===n.id)){
+                        this.conns.push({id:_cid++,f:fid,t:n.id});this._save();
+                    }
+                });
+                document.querySelectorAll('.port-in').forEach(p=>p.classList.remove('highlight'));
+                this.dragConn=null;this._renderConns();
+            }
+        });
+        this.$canvas.addEventListener('wheel',e=>{
+            if(!e.ctrlKey)return;e.preventDefault();
+            const r=this.$canvas.getBoundingClientRect();
+            const mx=e.clientX-r.left,my=e.clientY-r.top;
+            const nz=Math.min(2,Math.max(.4,this.zoom*(e.deltaY>0?.9:1.1)));
+            this.px=mx-(mx-this.px)*(nz/this.zoom);this.py=my-(my-this.py)*(nz/this.zoom);
+            this.zoom=nz;this._t();
+        },{passive:false});
+    },
+
+    _bindKeys(){
+        document.addEventListener('keydown',e=>{
+            if(e.ctrlKey&&e.key==='z'&&!e.shiftKey){e.preventDefault();this.undo();}
+            if(e.ctrlKey&&(e.key==='y'||(e.shiftKey&&e.key==='z'))){e.preventDefault();this.redo();}
+            if(e.ctrlKey&&e.key==='d'){e.preventDefault();if(this.selId)this._dup(this.selId);}
+            if(e.key==='Escape'){this.closePanel();this._sel(null);}
+            if((e.key==='Delete'||e.key==='Backspace')&&this.selId){
+                if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+                this._del(this.selId);
+            }
+        });
+    },
+
+    _t(){
+        this.$ci.style.transform=`translate(${this.px}px,${this.py}px) scale(${this.zoom})`;
+        document.getElementById('zoomLbl').textContent='%'+Math.round(this.zoom*100);
+    },
+
+    // ── nodes ──
+    addNode(type,x,y,name,settings){
+        const n={id:_nid++,type,name:name||META[type].label,x:Math.round(x),y:Math.round(y),settings:settings?{...settings}:{...DEFS[type]||{}}};
+        this.nodes.push(n);this._renderNode(n);this._save();
+        this._updateWebhookBadge();
+        return n;
+    },
+
+    _renderNode(n){
+        const el=document.createElement('div');
+        el.className='node';el.id='n'+n.id;
+        el.style.cssText=`left:${n.x}px;top:${n.y}px`;
+        el.innerHTML=`
+            <div class="port port-in"></div>
+            <div class="node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n.type]||''}</svg></div>
+            <div class="node-content">
+                <div class="node-type">${META[n.type].cat}</div>
+                <div class="node-name" id="nn${n.id}">${this._e(n.name)}</div>
+            </div>
+            <div class="node-actions">
+                <button class="node-btn" data-a="cfg" data-id="${n.id}" title="Settings">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+                <button class="node-btn" data-a="del" data-id="${n.id}" title="Delete">
+                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="port port-out"></div>`;
+
+        el.addEventListener('mousedown',e=>{
+            if(e.target.closest('.node-btn,.port'))return;
+            e.stopPropagation();this._sel(n.id);
+            const r=this.$canvas.getBoundingClientRect();
+            const mx=(e.clientX-r.left-this.px)/this.zoom,my=(e.clientY-r.top-this.py)/this.zoom;
+            this.dragNode={id:n.id,ox:mx-n.x,oy:my-n.y};
+        });
+        el.addEventListener('dblclick',e=>{if(!e.target.closest('.node-btn,.port'))this.openPanel(n.id);});
+        el.addEventListener('click',e=>{
+            const b=e.target.closest('.node-btn');if(!b)return;
+            e.stopPropagation();
+            b.dataset.a==='del'?this._del(+b.dataset.id):this.openPanel(+b.dataset.id);
+        });
+        el.querySelector('.port-out').addEventListener('mousedown',e=>{
+            e.stopPropagation();e.preventDefault();
+            const r=this.$canvas.getBoundingClientRect();
+            this.dragConn={fid:n.id,mx:(e.clientX-r.left-this.px)/this.zoom,my:(e.clientY-r.top-this.py)/this.zoom};
+        });
+        this.$nc.appendChild(el);
+    },
+
+    _del(id){
+        this.nodes=this.nodes.filter(n=>n.id!==id);
+        this.conns=this.conns.filter(c=>c.f!==id&&c.t!==id);
+        document.getElementById('n'+id)?.remove();
+        if(this.selId===id)this._sel(null);
+        if(this.editId===id)this.closePanel();
+        this._renderConns();this._save();
+        this._updateWebhookBadge();
+    },
+
+    _dup(id){
+        const n=this.nodes.find(n=>n.id===id);if(!n)return;
+        const c=this.addNode(n.type,n.x+30,n.y+30,n.name+' Copy',n.settings);
+        this._sel(c.id);
+    },
+
+    _sel(id){
+        this.selId=id;
+        document.querySelectorAll('.node').forEach(el=>el.classList.remove('selected'));
+        if(id)document.getElementById('n'+id)?.classList.add('selected');
+    },
+
+    // ── connections ──
+    _renderConns(){
+        this.$svg.innerHTML='';
+        this.conns.forEach(c=>{
+            const f=this.nodes.find(n=>n.id===c.f),t=this.nodes.find(n=>n.id===c.t);
+            if(!f||!t)return;
+            const x1=f.x+182,y1=f.y+31,x2=t.x-7,y2=t.y+31,cx=(x1+x2)/2;
+            const d=`M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+            const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+            const hit=document.createElementNS('http://www.w3.org/2000/svg','path');
+            hit.setAttribute('d',d);hit.classList.add('conn-hit');
+            hit.setAttribute('pointer-events','stroke');
+            hit.addEventListener('click',()=>{this.conns=this.conns.filter(x=>x.id!==c.id);this._renderConns();this._save();});
+            const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+            path.setAttribute('d',d);path.classList.add('conn-path');path.id='c'+c.id;
+            g.appendChild(hit);g.appendChild(path);this.$svg.appendChild(g);
+        });
+        if(this.dragConn){
+            const f=this.nodes.find(n=>n.id===this.dragConn.fid);
+            if(f){
+                const x1=f.x+182,y1=f.y+31,x2=this.dragConn.mx,y2=this.dragConn.my,cx=(x1+x2)/2;
+                const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+                p.setAttribute('d',`M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`);
+                p.classList.add('conn-path','dragging');this.$svg.appendChild(p);
+            }
+        }
+    },
+
+    // ── panel ──
+    openPanel(id){
+        const n=this.nodes.find(n=>n.id===id);if(!n)return;
+        this.editId=id;
+        document.getElementById('panelTitle').textContent=n.name+' — Settings';
+        document.getElementById('panelBody').innerHTML=this._form(n);
+        this.$panel.classList.add('open');
+    },
+
+    _form(n){
+        const s=n.settings;
+        const fi=(id,lbl,v,ph='')=>`<div class="fg"><label class="fl">${lbl}</label><input class="fi" id="${id}" value="${this._e(v||'')}" placeholder="${ph}"></div>`;
+        const ta=(id,lbl,v,h=70)=>`<div class="fg"><label class="fl">${lbl}</label><textarea class="ft" id="${id}" style="min-height:${h}px">${this._e(v||'')}</textarea></div>`;
+        const sel=(id,lbl,opts,cur)=>`<div class="fg"><label class="fl">${lbl}</label><select class="fs" id="${id}">${opts.map(([v,l])=>`<option value="${v}"${cur===v?' selected':''}>${l}</option>`).join('')}</select></div>`;
+        const hint=t=>`<div class="fh">${t}</div>`;
+
+        let h=fi('pf-name','Node Name',n.name);
+        const m={
+            webhook:  ()=>fi('pf-url','URL',s.url)+sel('pf-method','Method',[['GET','GET'],['POST','POST']],s.method)+hint('Webhook URL is shown in the top bar'),
+            schedule: ()=>fi('pf-cron','Cron Expression',s.cron,'*/5 * * * *')+hint('Example: */5 * * * * = every 5 minutes'),
+            http:     ()=>fi('pf-url','URL',s.url,'https://')+sel('pf-method','Method',[['GET','GET'],['POST','POST'],['PUT','PUT'],['DELETE','DELETE'],['PATCH','PATCH']],s.method)+ta('pf-headers','Headers (JSON)',s.headers),
+            email:    ()=>fi('pf-to','Recipient',s.to,'example@email.com')+hint('Use {{field}} for dynamic values')+fi('pf-subject','Subject',s.subject)+ta('pf-body','Body',s.body),
+            sheets:   ()=>fi('pf-sheetId','Google Sheet ID',s.sheetId)+fi('pf-sheet','Sheet Name',s.sheet,'Sheet1')+sel('pf-action','Action',[['read','Read'],['write','Write']],s.action),
+            slack:    ()=>fi('pf-webhookUrl','Slack Webhook URL',s.webhookUrl,'https://hooks.slack.com/...')+hint('Get it from Slack App → Incoming Webhooks')+fi('pf-channel','Channel (info)',s.channel,'#general')+ta('pf-message','Message',s.message)+hint('Use {{field}} for dynamic values'),
+            database: ()=>ta('pf-query','SQL Query',s.query,100)+hint('Note: add DB_URL to .env for a real DB connection'),
+            code:     ()=>ta('pf-code','JavaScript Code',s.code,120)+hint('data = output of previous node. Use return to pass result.'),
+            if:       ()=>fi('pf-condition','Condition (JS)',s.condition,'data.value > 0')+hint('You can use the data or item variable'),
+            filter:   ()=>fi('pf-field','Field Name',s.field)+sel('pf-operator','Operator',[['eq','Equal (==)'],['contains','Contains'],['gt','Greater than (>)'],['lt','Less than (<)']],s.operator)+fi('pf-value','Value',s.value),
+            transform:()=>fi('pf-source','Source Field',s.source)+fi('pf-target','Target Field',s.target)+sel('pf-operation','Action',[['copy','Copy'],['uppercase','Uppercase'],['lowercase','Lowercase'],['trim','Trim whitespace']],s.operation),
+            merge:    ()=>sel('pf-mode','Mode',[['merge','Merge'],['intersect','Intersect']],s.mode),
+        };
+        return h+(m[n.type]?.()|| '');
+    },
+
+    savePanel(){
+        const n=this.nodes.find(n=>n.id===this.editId);if(!n)return;
+        const g=id=>document.getElementById(id);
+        if(g('pf-name')){n.name=g('pf-name').value;const d=document.getElementById('nn'+n.id);if(d)d.textContent=n.name;document.getElementById('panelTitle').textContent=n.name+' — Settings';}
+        [['pf-url','url'],['pf-method','method'],['pf-headers','headers'],
+         ['pf-to','to'],['pf-subject','subject'],['pf-body','body'],
+         ['pf-sheetId','sheetId'],['pf-sheet','sheet'],['pf-action','action'],
+         ['pf-webhookUrl','webhookUrl'],['pf-channel','channel'],['pf-message','message'],
+         ['pf-query','query'],['pf-code','code'],['pf-condition','condition'],
+         ['pf-field','field'],['pf-operator','operator'],['pf-value','value'],
+         ['pf-source','source'],['pf-target','target'],['pf-operation','operation'],
+         ['pf-mode','mode'],['pf-cron','cron'],
+        ].forEach(([eid,key])=>{const el=g(eid);if(el)n.settings[key]=el.value;});
+        this._save();this.closePanel();this._toast('Saved');
+    },
+
+    closePanel(){this.$panel.classList.remove('open');this.editId=null;},
+
+    // ── run (API call) ──
+    async run(){
+        if(!this.nodes.length){this._toast('Canvas is empty!','error');return;}
+
+        // Auto-save first
+        await this.saveWorkflow(true);
+        if(!this.currentWfId){this._toast('Save first!','error');return;}
+
+        const btn=document.getElementById('runBtn');
+        btn.disabled=true;btn.textContent='⏳ Running...';
+
+        document.querySelectorAll('.node').forEach(el=>el.classList.add('dimmed'));
+        document.querySelectorAll('.conn-path').forEach(el=>el.classList.add('dimmed'));
+
+        try{
+            const res=await fetch(`/api/workflows/${this.currentWfId}/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+            const data=await res.json();
+
+            // Animation + log
+            this._showLog(data.result||[]);
+
+            if(data.success){
+                // Node renkleri
+                (data.result||[]).forEach(r=>{
+                    const el=document.getElementById('n'+this._nodeIdByName(r.node));
+                    if(el){el.classList.remove('dimmed');el.classList.add(r.status==='ok'?'success':'error-state');setTimeout(()=>el.classList.remove('success','error-state'),3000);}
+                });
+                this._toast('✓ Workflow completed!');
+            }else{
+                this._toast('Error: '+data.error,'error');
+            }
+        }catch(err){
+            this._toast('Server error: '+err.message,'error');
+        }
+
+        await new Promise(r=>setTimeout(r,400));
+        document.querySelectorAll('.node').forEach(el=>el.classList.remove('dimmed','running'));
+        document.querySelectorAll('.conn-path').forEach(el=>el.classList.remove('dimmed','animated'));
+        btn.disabled=false;btn.textContent='▶ Run';
+    },
+
+    _nodeIdByName(name){
+        return this.nodes.find(n=>n.name===name)?.id;
+    },
+
+    // ── log ──
+    _showLog(logs){
+        const panel=document.getElementById('logPanel');
+        const body=document.getElementById('logBody');
+        body.innerHTML=logs.map(r=>`
+            <div class="log-row">
+                <span class="log-status ${r.status==='ok'?'ok':'err'}">${r.status==='ok'?'OK':'ERR'}</span>
+                <span class="log-name">${this._e(r.node)} <span style="color:#555">(${r.type})</span></span>
+                <span class="log-out">${r.error||JSON.stringify(r.out).slice(0,120)}</span>
+            </div>`).join('');
+        panel.classList.add('open');
+    },
+    closeLog(){document.getElementById('logPanel').classList.remove('open');},
+
+    // ── workflow CRUD ──
+    async _loadWfList(){
+        const res=await fetch('/api/workflows');
+        const list=await res.json();
+        const sel=document.getElementById('wfList');
+        sel.innerHTML='<option value="">— Select saved workflow —</option>';
+        list.forEach(w=>{
+            const o=document.createElement('option');
+            o.value=w.id;o.textContent=w.name;
+            sel.appendChild(o);
+        });
+    },
+
+    async loadWorkflow(id){
+        if(!id)return;
+        const res=await fetch(`/api/workflows/${id}`);
+        const wf=await res.json();
+        this.currentWfId=wf.id;
+        this.webhookId=wf.webhookId;
+        document.getElementById('wfName').value=wf.name;
+        document.getElementById('delBtn').style.display='';
+
+        // Restore canvas
+        this.nodes=wf.nodes||[];
+        this.conns=wf.conns||[];
+        if(this.nodes.length)_nid=Math.max(...this.nodes.map(n=>n.id))+1;
+        if(this.conns.length)_cid=Math.max(...this.conns.map(c=>c.id))+1;
+        this.$nc.innerHTML='';
+        this.nodes.forEach(n=>this._renderNode(n));
+        this._renderConns();
+        this.history=[];this.hIdx=-1;this._save();
+        this._updateWebhookBadge();
+        this._toast('Loaded: '+wf.name);
+    },
+
+    newWorkflow(){
+        this.currentWfId=null;this.webhookId=null;
+        this.nodes=[];this.conns=[];
+        this.$nc.innerHTML='';this._renderConns();
+        document.getElementById('wfName').value='New Workflow';
+        document.getElementById('wfList').value='';
+        document.getElementById('delBtn').style.display='none';
+        this._updateWebhookBadge();
+        this.history=[];this.hIdx=-1;
+    },
+
+    async saveWorkflow(silent=false){
+        const name=document.getElementById('wfName').value||'New Workflow';
+        const body={name,nodes:this.nodes,conns:this.conns};
+        let wf;
+        if(this.currentWfId){
+            const res=await fetch(`/api/workflows/${this.currentWfId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            wf=await res.json();
+        }else{
+            const res=await fetch('/api/workflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            wf=await res.json();
+            this.currentWfId=wf.id;this.webhookId=wf.webhookId;
+            document.getElementById('delBtn').style.display='';
+            await this._loadWfList();
+            document.getElementById('wfList').value=wf.id;
+        }
+        this._updateWebhookBadge();
+        if(!silent)this._toast('Saved: '+name);
+    },
+
+    async deleteWorkflow(){
+        if(!this.currentWfId)return;
+        if(!confirm('This workflow will be deleted. Are you sure?'))return;
+        await fetch(`/api/workflows/${this.currentWfId}`,{method:'DELETE'});
+        await this._loadWfList();
+        this.newWorkflow();
+        this._toast('Deleted');
+    },
+
+    // ── webhook badge ──
+    _updateWebhookBadge(){
+        const badge=document.getElementById('webhookBadge');
+        const hasWebhook=this.nodes.some(n=>n.type==='webhook');
+        if(hasWebhook&&this.webhookId){
+            const url=`${location.origin}/webhook/${this.webhookId}`;
+            document.getElementById('webhookUrl').textContent=url;
+            badge.classList.add('visible');
+        }else{
+            badge.classList.remove('visible');
+        }
+    },
+
+    copyWebhook(){
+        const url=document.getElementById('webhookUrl').textContent;
+        navigator.clipboard.writeText(url).then(()=>this._toast('Copied!'));
+    },
+
+    clearCanvas(){
+        if(!this.nodes.length)return;
+        if(!confirm('All nodes will be deleted. Are you sure?'))return;
+        this.nodes=[];this.conns=[];this.$nc.innerHTML='';this._renderConns();this._save();this._updateWebhookBadge();
+    },
+
+    // ── history ──
+    _save(){
+        const s=JSON.stringify({nodes:this.nodes,conns:this.conns});
+        this.history=this.history.slice(0,this.hIdx+1);
+        this.history.push(s);
+        if(this.history.length>20)this.history.shift();
+        this.hIdx=this.history.length-1;
+    },
+    undo(){if(this.hIdx<=0)return;this._restore(this.history[--this.hIdx]);},
+    redo(){if(this.hIdx>=this.history.length-1)return;this._restore(this.history[++this.hIdx]);},
+    _restore(s){
+        const {nodes,conns}=JSON.parse(s);
+        this.nodes=nodes;this.conns=conns;
+        if(nodes.length)_nid=Math.max(...nodes.map(n=>n.id))+1;
+        if(conns.length)_cid=Math.max(...conns.map(c=>c.id))+1;
+        this.$nc.innerHTML='';
+        this.nodes.forEach(n=>this._renderNode(n));
+        this._renderConns();
+        this._updateWebhookBadge();
+    },
+
+    _toast(msg,type=''){
+        const t=document.getElementById('toast');
+        t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+        clearTimeout(this._tt);
+        this._tt=setTimeout(()=>t.classList.remove('show'),2500);
+    },
+    _e(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+};
+
+document.addEventListener('DOMContentLoaded',()=>app.init());
+</script>
+</body>
+</html>
